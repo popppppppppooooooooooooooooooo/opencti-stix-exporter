@@ -3,7 +3,7 @@
         "url": "http://fuga.hoge",
         "token": "deadbeef-fafa-fefe-fafa-deadbeefdead"
     },
-    "start_date": [2025, 1, 1, 0, 0, 0],
-    "end_date": [2024, 1, 1, 0, 0, 0],
+    "start_date": [2024, 1, 1, 0, 0, 0],
+    "end_date": [2025, 1, 1, 0, 0, 0],
     "output_path": "stix.json"
 }
