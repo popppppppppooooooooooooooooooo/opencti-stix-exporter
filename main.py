@@ -21,6 +21,11 @@ import os
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from stix2 import Relationship, Sighting
+from io import StringIO
+import contextlib
+import sys
+from requests.adapters import HTTPAdapter
+from requests.sessions import Session
 
 # region init
 # =====================
@@ -39,18 +44,9 @@ with open('setting.json', 'r', encoding='utf-8-sig') as f:
     end_date = datetime(settings['end_date'][0], settings['end_date'][1], settings['end_date'][2], settings['end_date'][3], settings['end_date'][4], settings['end_date'][5])
     output_path = settings['output_path']
 
-
-# OpenCTIの接続設定
-# url = "http://hoge:25000"
-# token = "deadbeef-fafa-fefe-fafa-deadbeefdead"
-
 # 日時範囲の設定（例：過去24時間）
 # end_date = datetime.now()
 # start_date = end_date - timedelta(hours=24)
-# end_date = datetime(2026, 1, 1, 0, 0, 0)
-# start_date = datetime(2024, 1, 1, 0, 0, 0)
-# output_path = "stix.json"
-
 
 # =====================
 # init OUT
@@ -58,14 +54,17 @@ with open('setting.json', 'r', encoding='utf-8-sig') as f:
 
 # region main
 def main():
+    
+    spin.start()
     global clientb
     # OpenCTI APIクライアントの初期化
-    clienta = OpenCTIApiClient(url, token, ssl_verify=ssl_verify)
+    clienta = OpenCTIApiClient(url, token, log_level='error', ssl_verify=ssl_verify)
     clientb = clienta
     client = SecureEntityClient(clienta)
 
     # entitycount = client.get_entity_count(def_filter(start_date, end_date))
-
+    spin.stop()
+    
     relations = client.get_filtered_relationship(def_filter(start_date, end_date))
 
     # export_filtered_entities(clienta, relations, sanitize_windows_filename(str(end_date) + "_relations_"), output_path)
@@ -79,15 +78,28 @@ def main():
     export_filtered_entities(clienta, objects, sanitize_windows_filename(str(end_date) + "_all_"), output_path)
 
 
-
     print(f"{len(entityes)}個のエンティティーが出力されました")
     print(f"{len(relations)}個のリレーションが出力されました")
 
 
+# region capture stdout
+@contextlib.contextmanager
+def capture_outputs():
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
+        stdout_capture = StringIO()
+        stderr_capture = StringIO()
+        sys.stdout = stdout_capture
+        sys.stderr = stderr_capture
+        yield stdout_capture, stderr_capture
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
-#region filter
+
+# region filter
 def def_filter(start_date, end_date):
-    # Filter = "modified >= {} AND modified <= {}".format(start_date.isoformat(), end_date.isoformat())
     Filter = {
         "mode": "and",
         "filters": [
@@ -116,7 +128,7 @@ class SecureEntityClient:
         self.max_retries = 3
         self.retry_delay = 1  # 秒単位
 
-    #region entity
+    # region entity
     def get_all_stix_entities(self, filter_query=None, page_size=5000):
         """
         STIX形式のエンティティを全件取得する関数
@@ -141,16 +153,16 @@ class SecureEntityClient:
 
 
         try:
-            spin.start()
+
             while pagination_data["pagination"]["hasNextPage"]:
                 
                 cursor = pagination_data.get("pagination", {}).get("endCursor")
                 params = {}
-                print(f"cursor: {str(cursor)}")
-                spin.stop()
+                tqdm.write(f"cursor: {str(cursor)}")
+                
                 if cursor is not None:
                     params["after"] = cursor
-                
+                spin.start()
                 # エンティティタイプを指定しない全件取得
                 data = self.client.stix_domain_object.list(
                     filters=filter_query,
@@ -158,24 +170,21 @@ class SecureEntityClient:
                     withPagination=True,
                     **params
                 )
-                spin.start()
-                                
+                
                 all_entities.extend(data['entities'])
                 pagination_data = data
-                
+                spin.stop()
                 # デバッグ用ログ出力
                 # cursor = pagination_data.get("pagination", {}).get("endCursor")
-                
-            spin.stop()
+
         
         except Exception as e:
             self.logger.error(f"エンティティ取得エラー: {str(e)}")
             raise
         
         return convert_to_stix(all_entities, clientb)
-        # return all_entities
 
-    #region rerationship
+    # region rerationship
     def get_filtered_relationship(self, filter_query, page_size=5000, container_id=None):
         """
         フィルタ条件に合致するリレーションシップ（SRO）を全件取得し、
@@ -203,7 +212,7 @@ class SecureEntityClient:
             while pagination_data["pagination"]["hasNextPage"]:
                 cursor = pagination_data.get("pagination", {}).get("endCursor")
                 params = {"after": cursor} if cursor is not None else {}
-                print(f"cursor: {str(cursor)}")
+                tqdm.write(f"cursor: {str(cursor)}")
                 spin.start()
                 # エンティティタイプごとに適切なメソッドを使用する例（必要に応じて追加）
                 if filter_query.get('type') == 'ThreatActor':
@@ -251,28 +260,7 @@ class SecureEntityClient:
             self.logger.error(f"リレーション取得エラー: {str(e)}")
             raise
 
-    # region count
-    def get_entity_count(self, filter_query: List[Dict]) -> int:
-        """
-        フィルタリングされたエンティティの総数を取得
-        
-        :param filter_query: フィルタリングクエリ文字列
-        :return: エンティティの総数
-        """
-        return None
-        try:
-            data = self.client.stix_core_relationship.list(
-                filters=filter_query,
-                max_remote_objects=0,
-                with_pagination=True
-            )
-            return data.get('total', 0)
-        except Exception as e:
-            self.logger.error(f"エンティティ数取得エラー: {str(e)}")
-            raise
-
-
-# region convert
+# region convert to stix
 def convert_to_stix(data, client):
     stix_objects = []
     converter = OpenCTIStix2(client)
@@ -305,7 +293,7 @@ def convert_to_stix(data, client):
         
     return stix_objects
 
-# region bundle
+# region make bundle
 def make_stix_bundle(stix_obj):
 
     stix_bundle = {
@@ -349,6 +337,7 @@ def export_filtered_entities(client, all_entities, filename, output_path):
         return False
 
 
+# region sanitize filename
 def sanitize_windows_filename(filename):
     """
     Windowsファイル名から無効な文字を除去する関数
@@ -365,7 +354,7 @@ def sanitize_windows_filename(filename):
     return sanitized_name
 
 
-# region process
+# region process relationships
 def process_relationships_and_update_containers(relationships, client, filter_query, page_size):
     """
     OpenCTIのリレーションシップオブジェクトリストをSTIX2.1形式のオブジェクトリストに変換する。
@@ -600,15 +589,18 @@ def process_relationships_and_update_containers(relationships, client, filter_qu
     if relationships:
         with ThreadPoolExecutor() as executor:
             futures = {executor.submit(convert_relationship, rel): rel for rel in relationships}
-            for future in futures:
-                rel = futures[future]
-                try:
-                    obj = future.result()
-                    if obj:
-                        stix_objects.append(obj)
-                except Exception as e:
-                    rel_id = rel.get("id") or rel.get("standard_id") or str(rel)
-                    logging.warning(f"Error in processing relationship {rel_id}: {e}")
+            with tqdm(total=len(futures), desc="Processing relationships") as pbar:
+                for future in futures:
+                    rel = futures[future]
+                    try:
+                        obj = future.result()
+                        if obj:
+                            stix_objects.append(obj)                            
+                        pbar.update(1)
+                    except Exception as e:
+                        rel_id = rel.get("id") or rel.get("standard_id") or str(rel)
+                        tqdm.write(f"Error in processing relationship {rel_id}: {e}")
+                        pbar.update(1)
     return stix_objects
 
 # region debug
