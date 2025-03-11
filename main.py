@@ -54,7 +54,9 @@ with open('setting.json', 'r', encoding='utf-8-sig') as f:
 
 # region main
 def main():
-    
+    """
+    メイン関数。OpenCTI APIクライアントを初期化し、指定された日時範囲内のエンティティとリレーションシップを取得してSTIX形式で出力します。
+    """
     spin.start()
     global clientb
     # OpenCTI APIクライアントの初期化
@@ -85,6 +87,9 @@ def main():
 # region capture stdout
 @contextlib.contextmanager
 def capture_outputs():
+    """
+    標準出力と標準エラー出力をキャプチャするコンテキストマネージャ。
+    """
     old_stdout = sys.stdout
     old_stderr = sys.stderr
     try:
@@ -100,6 +105,16 @@ def capture_outputs():
 
 # region filter
 def def_filter(start_date, end_date):
+    """
+    指定された日時範囲でフィルタリングするためのフィルタクエリを生成します。
+    
+    Args:
+        start_date (datetime): フィルタの開始日時
+        end_date (datetime): フィルタの終了日時
+    
+    Returns:
+        dict: フィルタクエリ
+    """
     Filter = {
         "mode": "and",
         "filters": [
@@ -120,14 +135,19 @@ def def_filter(start_date, end_date):
         }
     return Filter
 
-# region class
+# region main-class
 class SecureEntityClient:
     def __init__(self, client: OpenCTIApiClient):
+        """
+        SecureEntityClientの初期化。OpenCTI APIクライアントを受け取ります。
+        
+        Args:
+            client (OpenCTIApiClient): OpenCTI APIクライアント
+        """
         self.client = client
         self.logger = logging.getLogger(__name__)
         self.max_retries = 3
         self.retry_delay = 1  # 秒単位
-
     # region entity
     def get_all_stix_entities(self, filter_query=None, page_size=5000):
         """
@@ -135,13 +155,10 @@ class SecureEntityClient:
         
         Args:
             filter_query (dict): フィルタリング条件（オプション）
-            page_size (int): ページネーションのページサイズ（デフォルト: 100）
+            page_size (int): ページネーションのページサイズ（デフォルト: 5000）
         
         Returns:
-            dict: STIX形式のエンティティ一覧を含む辞書
-            
-        Raises:
-            Exception: API呼び出しでエラーが発生した場合
+            list: STIX形式のエンティティ一覧を含むリスト
         """
         all_entities = []
         pagination_data = {
@@ -192,14 +209,11 @@ class SecureEntityClient:
 
         Args:
             filter_query (dict): フィルタリング条件
-            page_size (int): ページネーションのページサイズ（デフォルト: 100）
+            page_size (int): ページネーションのページサイズ（デフォルト: 5000）
             container_id (str, optional): 関連付け対象のコンテナID（例：ReportのID）
 
         Returns:
             list: 取得したリレーションシップオブジェクトのリスト
-
-        Raises:
-            Exception: API呼び出しでエラーが発生した場合
         """
         all_relationships = []
         pagination_data = {
@@ -262,6 +276,16 @@ class SecureEntityClient:
 
 # region convert to stix
 def convert_to_stix(data, client):
+    """
+    OpenCTIのエンティティデータをSTIX 2.1形式に変換します。
+    
+    Args:
+        data (list): OpenCTIのエンティティデータ
+        client (OpenCTIApiClient): OpenCTI APIクライアント
+    
+    Returns:
+        list: STIX 2.1形式のオブジェクトリスト
+    """
     stix_objects = []
     converter = OpenCTIStix2(client)
     
@@ -295,7 +319,15 @@ def convert_to_stix(data, client):
 
 # region make bundle
 def make_stix_bundle(stix_obj):
-
+    """
+    STIXオブジェクトをバンドル形式に変換します。
+    
+    Args:
+        stix_obj (list): STIXオブジェクトのリスト
+    
+    Returns:
+        dict: STIXバンドル
+    """
     stix_bundle = {
         "type": "bundle",
         "id": f"bundle--{uuid.uuid4()}",
@@ -311,6 +343,15 @@ def export_filtered_entities(client, all_entities, filename, output_path):
     セキュリティ対策：
     - 入力値検証
     - ファイル操作の安全性確保
+    
+    Args:
+        client (OpenCTIApiClient): OpenCTI APIクライアント
+        all_entities (list): 取得したエンティティのリスト
+        filename (str): 出力ファイル名
+        output_path (str): 出力ファイルのパス
+    
+    Returns:
+        bool: 成功した場合はTrue、失敗した場合はFalse
     """
     if not isinstance(all_entities, (list, tuple)):
         raise TypeError("all_entitiesはリストまたはタプルである必要があります")
@@ -344,6 +385,12 @@ def sanitize_windows_filename(filename):
     セキュリティ上の考慮事項：
     - バックスラッシュはエスケープシーケンスとして扱われるため特別な処理が必要
     - 正規表現パターンのコンパイルは一度だけ行い、キャッシュすることで性能を最適化
+    
+    Args:
+        filename (str): サニタイズするファイル名
+    
+    Returns:
+        str: サニタイズされたファイル名
     """
     # 無効な文字の正規表現パターンをコンパイル
     invalid_chars_pattern = re.compile(r'[\/:*?"<>|\\\+]')  # \+ は正規表現での特殊文字
@@ -359,9 +406,14 @@ def process_relationships_and_update_containers(relationships, client, filter_qu
     """
     OpenCTIのリレーションシップオブジェクトリストをSTIX2.1形式のオブジェクトリストに変換する。
     
-    :param client: OpenCTIApiClient インスタンス（OpenCTI APIクライアント）
-    :param relationships: リレーションシップオブジェクトのリスト
-    :return: STIX2.1形式（辞書）のオブジェクトリスト
+    Args:
+        client (OpenCTIApiClient): OpenCTI APIクライアント
+        relationships (list): リレーションシップオブジェクトのリスト
+        filter_query (dict): フィルタリング条件
+        page_size (int): ページネーションのページサイズ（デフォルト: 5000）
+    
+    Returns:
+        list: STIX2.1形式のオブジェクトリスト
     """
     # キャッシュ：内部IDからstandard_id（STIX ID）へのマッピングを保持
     id_cache = {}
@@ -605,6 +657,12 @@ def process_relationships_and_update_containers(relationships, client, filter_qu
 
 # region debug
 def debug(target=""):
+    """
+    デバッグ情報を表示する関数。
+    
+    Args:
+        target (str): デバッグ対象（オプション）
+    """
     if target == "":
         print("##############################")
         print("debug information")
