@@ -4,28 +4,19 @@
 print("starting " + __file__);from halo import Halo;spin = Halo(text='wait a moment...', spinner='dots');spin.start() # spin.stop()
 # ========== SPINNER_START END ==========
 
-
-from pycti import OpenCTIApiClient
-from pycti.utils.opencti_stix2 import OpenCTIStix2
 import json
-from datetime import datetime, timedelta
-from stix2 import MemoryStore, Filter
-from tqdm import tqdm
-from halo import Halo
+import uuid
+import re
 import logging
-from typing import List, Optional, Dict
-import time
-from stix2 import Identity, parse
-import uuid, re
-import os
-import logging
-from concurrent.futures import ThreadPoolExecutor
-from stix2 import Relationship, Sighting
-from io import StringIO
 import contextlib
 import sys
-from requests.adapters import HTTPAdapter
-from requests.sessions import Session
+from pycti import OpenCTIApiClient
+from pycti.utils.opencti_stix2 import OpenCTIStix2
+from datetime import datetime
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
+
 
 # region init
 # =====================
@@ -33,6 +24,7 @@ from requests.sessions import Session
 # =====================
 
 ssl_verify = True
+log_level = "error"
 
 # read setting.json
 with open('setting.json', 'r', encoding='utf-8-sig') as f:
@@ -60,29 +52,21 @@ def main():
     spin.start()
     global clientb
     # OpenCTI APIクライアントの初期化
-    clienta = OpenCTIApiClient(url, token, log_level='error', ssl_verify=ssl_verify)
+    clienta = OpenCTIApiClient(url, token, log_level=log_level, ssl_verify=ssl_verify)
     clientb = clienta
     client = SecureEntityClient(clienta)
 
-    # entitycount = client.get_entity_count(def_filter(start_date, end_date))
     spin.stop()
     
     relations = client.get_filtered_relationship(def_filter(start_date, end_date))
-
-    # export_filtered_entities(clienta, relations, sanitize_windows_filename(str(end_date) + "_relations_"), output_path)
-
-
-    entityes = client.get_all_stix_entities(def_filter(start_date, end_date))
-    # export_filtered_entities(clienta, entityes, sanitize_windows_filename(str(end_date) + "_entities_"), ou   tput_path)
-
-    objects = entityes + relations
+    entities = client.get_all_stix_entities(def_filter(start_date, end_date))
+    
+    objects = entities + relations
 
     export_filtered_entities(clienta, objects, sanitize_windows_filename(str(end_date) + "_all_"), output_path)
 
-
-    print(f"{len(entityes)}個のエンティティーが出力されました")
+    print(f"{len(entities)}個のエンティティーが出力されました")
     print(f"{len(relations)}個のリレーションが出力されました")
-
 
 # region capture stdout
 @contextlib.contextmanager
@@ -301,7 +285,7 @@ def convert_to_stix(data, client):
 
         if entity_type == 'stix-core-relationship':
             stix_obj = client.stix_core_relationship.to_stix2(entity=rel, mode="full")
-            stix_objects.apend(stix_obj)
+            stix_objects.append(stix_obj)
 
         if entity_type == 'stix-sighting-relationship':
             stix_obj = client.stix_sighting_relationship.to_stix2(entity=rel, mode="full")
@@ -313,8 +297,7 @@ def convert_to_stix(data, client):
 
         else:
             stix_objects.append(converter.generate_export(entity=rel))
-            # tqdm.write("WARN:unknown type <" + entity_type + "> skipped")
-        
+                    
     return stix_objects
 
 # region make bundle
@@ -663,6 +646,10 @@ def debug(target=""):
     Args:
         target (str): デバッグ対象（オプション）
     """
+    
+    global log_level
+    log_level = "info"
+    
     if target == "":
         print("##############################")
         print("debug information")
@@ -685,5 +672,6 @@ spin.stop()
 
 
 if __name__ == "__main__":
-    debug()
+    if debug:
+        debug()
     main()
