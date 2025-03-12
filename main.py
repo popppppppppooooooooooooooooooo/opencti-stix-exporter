@@ -10,9 +10,10 @@ import re
 import logging
 import contextlib
 import sys
+import argparse
 from pycti import OpenCTIApiClient
 from pycti.utils.opencti_stix2 import OpenCTIStix2
-from datetime import datetime
+from datetime import datetime, timedelta
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
@@ -27,18 +28,47 @@ ssl_verify = True
 log_level = "error"
 
 # read setting.json
-with open('setting.json', 'r', encoding='utf-8-sig') as f:
-    settings = json.load(f)
-    url = settings['opencti']['url']
-    token = settings['opencti']['token']
-    
-    start_date = datetime(settings['start_date'][0], settings['start_date'][1], settings['start_date'][2], settings['start_date'][3], settings['start_date'][4], settings['start_date'][5])
-    end_date = datetime(settings['end_date'][0], settings['end_date'][1], settings['end_date'][2], settings['end_date'][3], settings['end_date'][4], settings['end_date'][5])
-    output_path = settings['output_path']
+try:
+    with open('setting.json', 'r', encoding='utf-8-sig') as f:
+        settings = json.load(f)
+        url = settings['opencti']['url']
+        token = settings['opencti']['token']
+        
+        output_path = settings['output_path']
+except Exception as e:
+    tqdm.write(e)
+    tqdm.write("setting.json を読み込めません")
+    sys.exit(1)
 
 # 日時範囲の設定（例：過去24時間）
-# end_date = datetime.now()
-# start_date = end_date - timedelta(hours=24)
+end_date = datetime.now().replace(hour=0, minute=0, second=0)
+start_date = end_date - timedelta(hours=24)
+
+parser = argparse.ArgumentParser(description='OpenCTIからSTIX2形式のエンティティを取得します', 
+                                formatter_class=argparse.RawTextHelpFormatter)
+
+if len(sys.argv) == 1:
+    if sys.argv[0] == "-j":
+        # jsonの設定を読み込む
+        tqdm.write("jsonの日付設定を使用します")
+        with open('setting.json', 'r', encoding='utf-8-sig') as f:
+            start_date = datetime(
+                settings['stix']['start_date'][0], 
+                settings['stix']['start_date'][1], 
+                settings['stix']['start_date'][2], 
+                settings['stix']['start_date'][3], 
+                settings['stix']['start_date'][4], 
+                settings['stix']['start_date'][5]
+                )
+            end_date = datetime(
+                settings['stix']['end_date'][0], 
+                settings['stix']['end_date'][1], 
+                settings['stix']['end_date'][2], 
+                settings['stix']['end_date'][3], 
+                settings['stix']['end_date'][4], 
+                settings['stix']['end_date'][5]
+                )
+
 
 # =====================
 # init OUT
@@ -52,7 +82,7 @@ def main():
     spin.start()
     global clientb
     # OpenCTI APIクライアントの初期化
-    clienta = OpenCTIApiClient(url, token, log_level=log_level, ssl_verify=ssl_verify)
+    clienta = OpenCTIApiClient(url, token, request_timeout=600, log_level=log_level, ssl_verify=ssl_verify)
     clientb = clienta
     client = SecureEntityClient(clienta)
 
