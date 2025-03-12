@@ -82,7 +82,7 @@ def main():
     spin.start()
     global clientb
     # OpenCTI APIクライアントの初期化
-    clienta = OpenCTIApiClient(url, token, request_timeout=600, log_level=log_level, ssl_verify=ssl_verify)
+    clienta = OpenCTIApiClient(url, token, log_level=log_level, ssl_verify=ssl_verify)
     clientb = clienta
     client = SecureEntityClient(clienta)
 
